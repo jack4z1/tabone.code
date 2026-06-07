@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TempDrop — Disposable Email</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --surface: #13131a;
+    --surface2: #1c1c28;
+    --border: #2a2a3d;
+    --accent: #7c6aff;
+    --accent2: #a78bfa;
+    --green: #34d399;
+    --red: #f87171;
+    --text: #e8e8f0;
+    --muted: #6b6b8a;
+    --mono: 'Space Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 16px 80px;
+    background-image: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124,106,255,0.15), transparent);
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+    animation: fadeUp 0.6s ease both;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(28px, 5vw, 42px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    background: linear-gradient(135deg, #fff 0%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .subtitle {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 15px;
+    font-weight: 300;
+    letter-spacing: 0.01em;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    width: 100%;
+    max-width: 620px;
+    animation: fadeUp 0.6s ease 0.1s both;
+  }
+
+  .card + .card {
+    margin-top: 16px;
+    animation-delay: 0.2s;
+  }
+
+  .card-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  .email-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .email-display {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--text);
+    letter-spacing: 0.02em;
+    min-height: 50px;
+    display: flex;
+    align-items: center;
+    word-break: break-all;
+    transition: border-color 0.2s;
+  }
+
+  .email-display.loaded {
+    border-color: var(--accent);
+    color: var(--accent2);
+  }
+
+  .btn {
+    border: none;
+    border-radius: 10px;
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 14px 18px;
+  }
+
+  .btn:active { transform: scale(0.97); }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { background: var(--accent2); }
+  .btn-primary:disabled { background: var(--surface2); color: var(--muted); cursor: not-allowed; transform: none; }
+
+  .btn-ghost {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent2); }
+
+  .btn-sm {
+    padding: 8px 14px;
+    font-size: 12px;
+    border-radius: 8px;
+  }
+
+  .action-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex-shrink: 0;
+  }
+  .dot.active { background: var(--green); animation: pulse 2s infinite; }
+  .dot.error { background: var(--red); }
+
+  .inbox-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .badge {
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-family: var(--mono);
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-weight: 700;
+  }
+
+  .empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.8;
+  }
+
+  .empty-icon {
+    font-size: 32px;
+    margin-bottom: 12px;
+    opacity: 0.4;
+  }
+
+  .mail-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .mail-item::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .mail-item:hover { border-color: var(--accent); }
+  .mail-item:hover::before { opacity: 1; }
+  .mail-item.unread::before { opacity: 1; }
+
+  .mail-from {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+    font-family: var(--mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mail-subject {
+    font-size: 13px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mail-time {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-top: 6px;
+  }
+
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    backdrop-filter: blur(4px);
+  }
+
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    width: 100%;
+    max-width: 580px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    animation: fadeUp 0.2s ease both;
+  }
+
+  .modal-top {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .modal-subject {
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.4;
+  }
+
+  .modal-from {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-top: 4px;
+  }
+
+  .modal-body {
+    padding: 20px 24px;
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    flex: 1;
+  }
+
+  .modal-body a { color: var(--accent2); }
+
+  .close-btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 18px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .close-btn:hover { color: var(--text); border-color: var(--accent); }
+
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--green);
+    color: #000;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 10px 20px;
+    border-radius: 99px;
+    z-index: 200;
+    transition: transform 0.3s ease;
+    pointer-events: none;
+    font-family: var(--mono);
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .countdown {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">// TempDrop</div>
+  <h1>Disposable Inbox</h1>
+  <p class="subtitle">Generate a throwaway email. Use it. Forget it.</p>
+</header>
+
+<div class="card">
+  <div class="card-label">Your temporary address</div>
+  <div class="email-row">
+    <div class="email-display" id="emailDisplay">Tap generate to get started...</div>
+  </div>
+  <div class="action-row">
+    <button class="btn btn-primary" id="generateBtn" onclick="generateEmail()">
+      <span id="genBtnContent">⚡ Generate Address</span>
+    </button>
+    <button class="btn btn-ghost" id="copyBtn" onclick="copyEmail()" style="display:none">
+      📋 Copy
+    </button>
+    <button class="btn btn-ghost btn-sm" id="newBtn" onclick="generateEmail()" style="display:none">
+      🔄 New Address
+    </button>
+  </div>
+  <div class="status-bar">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">Ready to generate</span>
+    <span class="countdown" id="countdown"></span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="inbox-header">
+    <div class="card-label" style="margin:0">Inbox</div>
+    <span class="badge" id="mailCount">0</span>
+  </div>
+  <div id="inboxContent">
+    <div class="empty-state">
+      <div class="empty-icon">📭</div>
+      Generate an address first,<br>then emails will appear here automatically.
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-top">
+      <div>
+        <div class="modal-subject" id="modalSubject"></div>
+        <div class="modal-from" id="modalFrom"></div>
+      </div>
+      <button class="close-btn" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  let token = null;
+  let currentEmail = null;
+  let pollInterval = null;
+  let countdownInterval = null;
+  let nextPollIn = 10;
+
+  async function generateEmail() {
+    const btn = document.getElementById('generateBtn');
+    const content = document.getElementById('genBtnContent');
+    btn.disabled = true;
+    content.innerHTML = '<span class="spinner"></span> Generating...';
+
+    stopPolling();
+
+    try {
+      const domains = await fetch('https://api.mail.tm/domains').then(r => r.json());
+      const domain = domains['hydra:member'][0].domain;
+
+      const user = Math.random().toString(36).substring(2, 10);
+      const password = Math.random().toString(36).substring(2, 18);
+      const address = `${user}@${domain}`;
+
+      await fetch('https://api.mail.tm/accounts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, password })
+      });
+
+      const authRes = await fetch('https://api.mail.tm/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address, password })
+      }).then(r => r.json());
+
+      token = authRes.token;
+      currentEmail = address;
+
+      const display = document.getElementById('emailDisplay');
+      display.textContent = address;
+      display.classList.add('loaded');
+
+      document.getElementById('copyBtn').style.display = 'flex';
+      document.getElementById('newBtn').style.display = 'flex';
+
+      setStatus('active', 'Polling for new mail...');
+      renderInbox([]);
+      startPolling();
+      fetchMessages();
+
+    } catch (e) {
+      setStatus('error', 'Failed — check connection');
+      showToast('❌ Error generating address', '#f87171');
+    }
+
+    btn.disabled = false;
+    content.innerHTML = '⚡ Generate Address';
+  }
+
+  function startPolling() {
+    nextPollIn = 10;
+    updateCountdown();
+    countdownInterval = setInterval(() => {
+      nextPollIn--;
+      if (nextPollIn <= 0) {
+        nextPollIn = 10;
+        fetchMessages();
+      }
+      updateCountdown();
+    }, 1000);
+  }
+
+  function stopPolling() {
+    clearInterval(pollInterval);
+    clearInterval(countdownInterval);
+    document.getElementById('countdown').textContent = '';
+  }
+
+  function updateCountdown() {
+    document.getElementById('countdown').textContent = `— refresh in ${nextPollIn}s`;
+  }
+
+  async function fetchMessages() {
+    if (!token) return;
+    try {
+      const res = await fetch('https://api.mail.tm/messages', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(r => r.json());
+      const messages = res['hydra:member'] || [];
+      renderInbox(messages);
+      document.getElementById('mailCount').textContent = messages.length;
+    } catch (e) {
+      setStatus('error', 'Poll failed');
+    }
+  }
+
+  function renderInbox(messages) {
+    const inbox = document.getElementById('inboxContent');
+    if (messages.length === 0) {
+      inbox.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📬</div>
+          No emails yet.<br>Go sign up on a website using your temp address!
+        </div>`;
+      return;
+    }
+    inbox.innerHTML = messages.map(m => `
+      <div class="mail-item ${m.seen ? '' : 'unread'}" onclick="openEmail('${m.id}')">
+        <div class="mail-from">${escHtml(m.from?.address || 'unknown')}</div>
+        <div class="mail-subject">${escHtml(m.subject || '(no subject)')}</div>
+        <div class="mail-time">${formatTime(m.createdAt)}</div>
+      </div>
+    `).join('');
+  }
+
+  async function openEmail(id) {
+    if (!token) return;
+    try {
+      const msg = await fetch(`https://api.mail.tm/messages/${id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      }).then(r => r.json());
+
+      document.getElementById('modalSubject').textContent = msg.subject || '(no subject)';
+      document.getElementById('modalFrom').textContent = `From: ${msg.from?.address || 'unknown'}`;
+
+      const body = msg.text || stripHtml(msg.html?.[0] || '') || '(empty)';
+      document.getElementById('modalBody').textContent = body;
+      document.getElementById('modalOverlay').classList.add('open');
+      fetchMessages();
+    } catch (e) {
+      showToast('❌ Could not load email', '#f87171');
+    }
+  }
+
+  function closeModal(e) {
+    if (!e || e.target === document.getElementById('modalOverlay') || !e.target) {
+      document.getElementById('modalOverlay').classList.remove('open');
+    }
+  }
+
+  function copyEmail() {
+    if (!currentEmail) return;
+    navigator.clipboard.writeText(currentEmail).then(() => showToast('✅ Copied to clipboard!'));
+  }
+
+  function setStatus(state, text) {
+    const dot = document.getElementById('statusDot');
+    dot.className = 'dot';
+    if (state === 'active') dot.classList.add('active');
+    if (state === 'error') dot.classList.add('error');
+    document.getElementById('statusText').textContent = text;
+  }
+
+  function showToast(msg, color = '#34d399') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.background = color;
+    t.style.color = color === '#34d399' ? '#000' : '#fff';
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  function formatTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' · ' + d.toLocaleDateString();
+  }
+
+  function escHtml(str) {
+    return str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  function stripHtml(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || '';
+  }
+</script>
+</body>
+</html>
