@@ -36,7 +36,7 @@ test('is a Manifest V3 extension', () => {
 });
 
 test('permissions are minimal and contain no credential/debug access', () => {
-  assert.deepEqual([...manifest.permissions].sort(), ['alarms', 'scripting', 'storage', 'tabs']);
+  assert.deepEqual([...manifest.permissions].sort(), ['alarms', 'scripting', 'sidePanel', 'storage', 'tabs']);
   for (const forbidden of ['debugger', 'cookies', 'webRequest', 'management', 'downloads', 'nativeMessaging']) {
     assert.ok(!manifest.permissions.includes(forbidden), `permission "${forbidden}" must never be requested`);
   }
@@ -89,16 +89,17 @@ test('no web_accessible_resources leak internal assets to pages', () => {
 });
 
 test('the toolbar action has no popup, so the worker owns the click', () => {
-  assert.ok(manifest.action, 'an action is required to open the dev console');
+  assert.ok(manifest.action, 'an action is required to open the side panel');
   assert.equal(manifest.action.default_popup, undefined);
 });
 
 test('every manifest-referenced file exists in dist/', () => {
   const referenced = [
     manifest.background.service_worker,
+    manifest.side_panel?.default_path,
     ...manifest.content_scripts.flatMap((entry) => entry.js),
     ...manifest.content_scripts.flatMap((entry) => entry.css ?? []),
-  ];
+  ].filter(Boolean);
   for (const rel of referenced) {
     assert.ok(existsSync(join(dist, rel)), `manifest references missing file dist/${rel}`);
   }
@@ -113,6 +114,8 @@ test('every manifest-referenced file exists in dist/', () => {
     'mocks/mock-claude.js',
     'test-console/test-console.html',
     'test-console/test-console.js',
+    'sidepanel/sidepanel.html',
+    'sidepanel/sidepanel.js',
   ];
   for (const rel of assets) {
     assert.ok(existsSync(join(dist, rel)), `expected asset missing: dist/${rel}`);

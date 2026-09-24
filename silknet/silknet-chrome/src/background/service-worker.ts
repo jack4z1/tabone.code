@@ -363,6 +363,8 @@ interface StartFlowArgs {
   runId: string;
   text: string;
   autoSend: boolean;
+  round?: number;
+  provider?: ProviderId;
 }
 
 function parseStartFlowArgs(args: unknown): StartFlowArgs | null {
@@ -371,31 +373,42 @@ function parseStartFlowArgs(args: unknown): StartFlowArgs | null {
   const runId = record['runId'];
   const text = record['text'];
   const autoSend = record['autoSend'];
+  const round = record['round'];
+  const provider = record['provider'];
   if (typeof runId !== 'string' || !runId) return null;
   if (typeof text !== 'string') return null;
-  return { runId, text, autoSend: autoSend === true };
+  return {
+    runId,
+    text,
+    autoSend: autoSend === true,
+    round: typeof round === 'number' && Number.isInteger(round) && round > 0 ? round : 1,
+    provider: isProviderId(provider) ? provider : undefined,
+  };
 }
 
 async function startFlow(args: StartFlowArgs): Promise<FlowResult[]> {
   const run = runs.get(args.runId);
   if (!run) throw new Error(`unknown runId ${args.runId}`);
 
+  const round = args.round ?? 1;
+  const targetProviders = args.provider ? [args.provider] : run.providers;
+
   await appendEvent({
     type: 'ROUND_STARTED',
     runId: run.runId,
-    round: 1,
+    round,
     timestamp: Date.now(),
   });
 
   const results: FlowResult[] = [];
-  for (const provider of run.providers) {
+  for (const provider of targetProviders) {
     results.push(await runProviderTurn(run, provider, args));
   }
 
   await appendEvent({
     type: 'ROUND_COMPLETED',
     runId: run.runId,
-    round: 1,
+    round,
     timestamp: Date.now(),
   });
 
@@ -440,7 +453,7 @@ async function runProviderTurn(
   await appendEvent({
     type: 'SUBMISSION_REQUESTED',
     runId: run.runId,
-    round: 1,
+    round: args.round ?? 1,
     provider,
     opId,
     text: args.text,
@@ -566,6 +579,14 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (!stillPending) return;
   stillPending.settle({ error: 'watchdog-fired: provider needs attention' });
 });
+
+// ---------------------------------------------------------------------------
+// Side Panel (Chrome 116+)
+// ---------------------------------------------------------------------------
+
+if (chrome.sidePanel && typeof chrome.sidePanel.setPanelBehavior === 'function') {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => undefined);
+}
 
 // ---------------------------------------------------------------------------
 // Messaging

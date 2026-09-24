@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Silknet",
-  "version": "0.2.1",
-  "description": "Run a structured multi-round debate between ChatGPT, Claude, and Gemini from one control panel.",
+  "version": "0.5.0",
+  "description": "Run structured multi-round debates between frontier AI models (ChatGPT, Claude, Gemini) directly in Chrome side panel.",
   "minimum_chrome_version": "116",
-  "permissions": ["scripting", "tabs", "alarms", "storage"],
+  "permissions": ["alarms", "scripting", "sidePanel", "storage", "tabs"],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://claude.ai/*",
@@ -13,6 +13,9 @@
   "background": {
     "service_worker": "background/service-worker.js",
     "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/sidepanel.html"
   },
   "content_scripts": [
     {
@@ -35,7 +38,7 @@
     }
   ],
   "action": {
-    "default_title": "Silknet — open dev test console"
+    "default_title": "Silknet — Open AI Debate Side Panel"
   },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'self'"

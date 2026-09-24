@@ -75,6 +75,13 @@ const bundles = [
     format: 'esm',
     sourcemap: 'inline',
   },
+  // Phase v0.5 side panel.
+  {
+    entry: 'src/sidepanel/sidepanel.ts',
+    outdir: 'dist/sidepanel',
+    format: 'esm',
+    sourcemap: 'inline',
+  },
 ];
 
 /** Static assets copied verbatim into the loadable extension root. */
@@ -84,6 +91,8 @@ const assets = [
   ['mocks', 'dist/mocks'],
   ['src/test-console/test-console.html', 'dist/test-console/test-console.html'],
   ['src/test-console/test-console.css', 'dist/test-console/test-console.css'],
+  ['src/sidepanel/sidepanel.html', 'dist/sidepanel/sidepanel.html'],
+  ['src/sidepanel/sidepanel.css', 'dist/sidepanel/sidepanel.css'],
 ];
 
 async function build({ entry, outdir, format, sourcemap }, quiet = false) {

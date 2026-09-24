@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Silknet — Multi-Model AI Debate</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <span class="logo">⚡</span>
+        <h1>SILKNET</h1>
+        <span class="version-tag">v0.5</span>
+      </div>
+      <div id="debate-status" class="status-pill idle">IDLE</div>
+    </header>
+
+    <main class="panel-content">
+      <!-- Provider Detection Bar -->
+      <section class="card provider-bar-card">
+        <div class="section-title-row">
+          <h2>Provider Tabs</h2>
+          <button id="refresh-tabs" class="icon-btn" title="Refresh Detected Tabs">🔄</button>
+        </div>
+        <div class="provider-chips">
+          <div id="chip-chatgpt" class="chip missing" data-provider="chatgpt">
+            <span class="dot"></span>
+            <span class="name">ChatGPT</span>
+            <span class="tab-id">—</span>
+          </div>
+          <div id="chip-claude" class="chip missing" data-provider="claude">
+            <span class="dot"></span>
+            <span class="name">Claude</span>
+            <span class="tab-id">—</span>
+          </div>
+          <div id="chip-gemini" class="chip missing" data-provider="gemini">
+            <span class="dot"></span>
+            <span class="name">Gemini</span>
+            <span class="tab-id">—</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Debate Setup Section -->
+      <section id="setup-section" class="card setup-card">
+        <h2>Debate Setup</h2>
+        
+        <label class="field">
+          <span>Debate Topic / Question</span>
+          <textarea id="debate-topic" rows="3" placeholder="Enter topic, problem, or architectural question...">Should software systems prioritize microservices or modular monoliths? Defend your position with concrete trade-offs.</textarea>
+        </label>
+
+        <div class="config-grid">
+          <label class="field">
+            <span>Rounds</span>
+            <select id="debate-rounds">
+              <option value="1">1 Round (Opening only)</option>
+              <option value="2" selected>2 Rounds (+ Cross-Critique)</option>
+              <option value="3">3 Rounds (+ Rebuttal/Consensus)</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Send Mode</span>
+            <select id="send-mode">
+              <option value="semi" selected>SEMI (Human clicks Send)</option>
+              <option value="auto">AUTO (Experimental)</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="participating-section">
+          <span>Participating Models:</span>
+          <div class="checkbox-row">
+            <label class="chk-label">
+              <input type="checkbox" id="chk-chatgpt" checked /> ChatGPT
+            </label>
+            <label class="chk-label">
+              <input type="checkbox" id="chk-claude" checked /> Claude
+            </label>
+            <label class="chk-label">
+              <input type="checkbox" id="chk-gemini" checked /> Gemini
+            </label>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button id="start-debate" class="primary-btn">Start Multi-Round Debate</button>
+          <button id="stop-debate" class="danger-btn" disabled>Stop</button>
+        </div>
+      </section>
+
+      <!-- Semi-mode notification toast -->
+      <div id="semi-banner" class="banner hidden">
+        <span class="banner-icon">👆</span>
+        <span id="semi-instruction">Text staged in tab! Switch to tab and click Send.</span>
+      </div>
+
+      <!-- Live Debate Transcript Feed -->
+      <section class="card transcript-card">
+        <div class="section-title-row">
+          <h2>Debate Feed</h2>
+          <div class="feed-actions">
+            <button id="copy-transcript" class="small-btn" title="Copy full debate as Markdown">📋 Copy MD</button>
+            <button id="clear-feed" class="small-btn text-muted" title="Clear current transcript">Clear</button>
+          </div>
+        </div>
+
+        <div id="transcript-feed" class="transcript-feed">
+          <div class="feed-empty">
+            Select at least two providers, configure your topic, and click <strong>Start Multi-Round Debate</strong>.
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <a href="../test-console/test-console.html" target="_blank" class="footer-link">Open Dev Test Console</a>
+      <span class="footer-note">Silknet Multi-Model Orchestration</span>
+    </footer>
+
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>
