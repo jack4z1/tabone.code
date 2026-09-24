@@ -1,8 +1,8 @@
 {
   "name": "silknet-chrome",
-  "version": "0.1.0",
+  "version": "0.5.0",
   "private": true,
-  "description": "Silknet Chrome extension — Phase v0.1 (ChatGPT DOM injection/completion/reply-reading spike).",
+  "description": "Silknet Chrome extension — Multi-model AI debate orchestration (ChatGPT, Claude, Gemini).",
   "type": "module",
   "scripts": {
     "build": "node build.mjs",
