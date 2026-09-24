@@ -167,8 +167,9 @@ function appendTurn(turn: DebateTurn): void {
 function showSemiBanner(provider: string, tabId: number): void {
   const banner = el<HTMLElement>('semi-banner');
   const text = el<HTMLElement>('semi-instruction');
-  text.textContent = `Text staged in ${provider.toUpperCase()} (Tab #${tabId})! Switch to it and click Send.`;
+  text.textContent = `Text staged in ${provider.toUpperCase()} (Tab #${tabId})! Click Send in that tab.`;
   banner.classList.remove('hidden');
+  chrome.tabs.update(tabId, { active: true }).catch(() => undefined);
 }
 
 function hideSemiBanner(): void {

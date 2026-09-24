@@ -23,6 +23,7 @@ import {
   injectComposerText,
   isDisabledLike,
   readComposerText,
+  textsMatch,
 } from './injection-utils';
 import {
   describeSpecs,
@@ -462,5 +463,5 @@ export function createAdapter(env: AdapterEnv, config: ProviderSelectorConfig): 
 export function composerMatches(env: AdapterEnv, config: ProviderSelectorConfig, expected: string): boolean {
   const composer = queryFirst(config.selectors.composer, env.document.body);
   if (!composer) return false;
-  return readComposerText(composer.el) === expected;
+  return textsMatch(readComposerText(composer.el), expected);
 }

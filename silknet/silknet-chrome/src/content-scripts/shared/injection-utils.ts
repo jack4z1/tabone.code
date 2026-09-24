@@ -12,14 +12,35 @@ export type InjectionOutcome =
   | { ok: false; reason: string };
 
 /**
+ * Compares actual composer text against expected text with tolerance for
+ * rich-text whitespace/newline normalization (contenteditable DOMs wrap lines
+ * in <p> or <div> blocks where textContent or innerText can collapse or format
+ * newlines differently).
+ */
+export function textsMatch(actual: string, expected: string): boolean {
+  if (actual === expected) return true;
+  if (actual.trim() === expected.trim()) return true;
+  const normActual = actual.replace(/\r\n/g, '\n').replace(/\s+/g, ' ').trim();
+  const normExpected = expected.replace(/\r\n/g, '\n').replace(/\s+/g, ' ').trim();
+  if (normActual === normExpected) return true;
+  // Fallback for editors where block boundaries produce no text separator in textContent
+  return actual.replace(/\s+/g, '') === expected.replace(/\s+/g, '');
+}
+
+/**
  * Reads the composer's current text as inert text.
  * Used to confirm injection actually landed (and, from Phase v0.5, as the
  * comparison side of tamper detection).
  */
 export function readComposerText(el: Element): string {
   if (isTextAreaLike(el) || isInputLike(el)) return el.value;
-  // contenteditable / ProseMirror: textContent, never innerHTML.
-  return el.textContent ?? '';
+  // In real browser DOM, innerText preserves newline separation between block elements (<p>, <div>, <br>).
+  const inner = (el as HTMLElement).innerText;
+  if (typeof inner === 'string' && inner.trim().length > 0) {
+    return inner;
+  }
+  // contenteditable / ProseMirror fallback: inert extraction, never innerHTML.
+  return extractInertText(el) || (el.textContent ?? '');
 }
 
 // NOTE ON REALMS: these checks use tagName rather than `instanceof`. The adapter
@@ -96,7 +117,17 @@ export function injectTextExecCommand(element: Element, text: string): void {
   (element as HTMLElement).focus?.();
   const view = element.ownerDocument.defaultView;
   if (!view) throw new Error('injectTextExecCommand: element has no owner window');
-  
+
+  // Select all existing content inside the composer first so that insertText
+  // replaces existing text (e.g. from previous turns or drafts) rather than appending.
+  const sel = view.getSelection();
+  if (sel) {
+    const range = element.ownerDocument.createRange();
+    range.selectNodeContents(element);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
   if (typeof element.ownerDocument.execCommand === 'function') {
     const success = element.ownerDocument.execCommand('insertText', false, text);
     if (success) return;
@@ -129,7 +160,7 @@ export function injectComposerText(
   }
 
   const readBack = readComposerText(element);
-  if (readBack !== text) {
+  if (!textsMatch(readBack, text)) {
     return {
       ok: false,
       reason: `injection read-back mismatch (expected ${text.length} chars, composer holds ${readBack.length})`,
