@@ -680,10 +680,44 @@ chrome.runtime.onMessage.addListener(
   },
 );
 
+async function scanOpenTabs(): Promise<void> {
+  try {
+    const tabs = await chrome.tabs.query({});
+    for (const tab of tabs) {
+      if (!tab.id || !tab.url) continue;
+      try {
+        const url = new URL(tab.url);
+        let provider: ProviderId | null = null;
+        if (url.origin === 'https://chatgpt.com') provider = 'chatgpt';
+        else if (url.origin === 'https://claude.ai') provider = 'claude';
+        else if (url.origin === 'https://gemini.google.com') provider = 'gemini';
+
+        if (provider) {
+          const key = candidateKey(provider, tab.id, 0);
+          if (!candidates.has(key)) {
+            await chrome.scripting
+              .executeScript({
+                target: { tabId: tab.id },
+                files: [`content-scripts/probe-${provider}.js`],
+              })
+              .catch(() => undefined);
+          }
+        }
+      } catch {
+        /* ignore invalid URLs */
+      }
+    }
+  } catch {
+    /* best-effort scan */
+  }
+}
+
 async function handleUi(message: UiMessage): Promise<unknown> {
   switch (message.op as UiOp) {
-    case 'listCandidates':
+    case 'listCandidates': {
+      await scanOpenTabs();
       return { candidates: [...candidates.values()], live: [...adaptersLive.entries()] };
+    }
 
     case 'bindRun': {
       const args = message.args;

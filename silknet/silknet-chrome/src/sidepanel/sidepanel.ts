@@ -205,6 +205,11 @@ async function runDebate(): Promise<void> {
 
   // Ensure candidate tabs are fresh
   await refreshCandidates();
+  if (candidates.length < selected.length) {
+    // Give background scanner time to receive PROBE_HELLO from newly probed tabs
+    await new Promise((r) => setTimeout(r, 600));
+    await refreshCandidates();
+  }
 
   const runId = `debate-${Date.now().toString(36)}`;
   currentRunId = runId;
@@ -220,7 +225,8 @@ async function runDebate(): Promise<void> {
   }
 
   if (activeProviders.length < 2) {
-    alert(`Could not bind enough tabs. Make sure at least 2 selected providers have tabs open and logged in.`);
+    const missing = selected.filter((p) => !activeProviders.includes(p));
+    alert(`Could not detect open tab(s) for: ${missing.map(m => m.toUpperCase()).join(', ')}.\n\nPlease ensure you have open, logged-in tabs for them and try again.`);
     return;
   }
 
