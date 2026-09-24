@@ -27,7 +27,7 @@ before(() => {
   manifest = JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8'));
 });
 
-const providerOrigins = ['https://chatgpt.com', 'https://claude.ai'];
+const providerOrigins = ['https://chatgpt.com', 'https://claude.ai', 'https://gemini.google.com'];
 
 test('is a Manifest V3 extension', () => {
   assert.equal(manifest.manifest_version, 3);
@@ -106,6 +106,7 @@ test('every manifest-referenced file exists in dist/', () => {
   const assets = [
     'selectors/chatgpt.json',
     'selectors/claude.json',
+    'selectors/gemini.json',
     'mocks/mock-chatgpt.html',
     'mocks/mock-chatgpt.js',
     'mocks/mock-claude.html',
@@ -119,7 +120,7 @@ test('every manifest-referenced file exists in dist/', () => {
 });
 
 test('the always-injected probe stays tiny and free of adapter machinery', () => {
-  for (const provider of ['chatgpt', 'claude']) {
+  for (const provider of ['chatgpt', 'claude', 'gemini']) {
     const probePath = join(dist, `content-scripts/probe-${provider}.js`);
     const size = statSync(probePath).size;
     const source = readFileSync(probePath, 'utf8');
@@ -134,7 +135,7 @@ test('the always-injected probe stays tiny and free of adapter machinery', () =>
 });
 
 test('the on-demand adapter bundle does contain the detection machinery', () => {
-  for (const provider of ['chatgpt', 'claude']) {
+  for (const provider of ['chatgpt', 'claude', 'gemini']) {
     const adapter = readFileSync(join(dist, `content-scripts/adapter-${provider}.js`), 'utf8');
     assert.ok(adapter.includes('MutationObserver'), `${provider} adapter should own the stability observer`);
     assert.ok(adapter.includes('stop-control-absent'), `${provider} completion signals should be reported by name`);

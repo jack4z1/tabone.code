@@ -54,6 +54,20 @@ const bundles = [
     format: 'iife',
     sourcemap: 'inline',
   },
+  // Phase-1 probe for Gemini: always injected on gemini.google.com, must stay tiny.
+  {
+    entry: 'src/content-scripts/probe-gemini.ts',
+    outdir: 'dist/content-scripts',
+    format: 'iife',
+    sourcemap: false,
+  },
+  // Phase-2 adapter for Gemini: dynamically injected into bound Gemini tabs only.
+  {
+    entry: 'src/content-scripts/adapter-gemini.ts',
+    outdir: 'dist/content-scripts',
+    format: 'iife',
+    sourcemap: 'inline',
+  },
   // Dev-only test console.
   {
     entry: 'src/test-console/test-console.ts',
