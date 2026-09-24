@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Silknet",
+  "version": "0.1.0",
+  "description": "Run a structured multi-round debate between ChatGPT and Claude from one control panel. Phase v0.1: ChatGPT DOM injection, completion-detection and reply-reading spike.",
+  "minimum_chrome_version": "116",
+  "permissions": ["scripting", "tabs", "alarms", "storage"],
+  "host_permissions": ["https://chatgpt.com/*"],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["content-scripts/probe-chatgpt.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_title": "Silknet — open dev test console"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-src 'self'"
+  }
+}

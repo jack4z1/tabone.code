@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Silknet — dev test console (Phase v0.1)</title>
+    <link rel="stylesheet" href="test-console.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Silknet <span class="ver">v0.1</span> dev test console</h1>
+      <p class="sub">
+        Phase v0.1 scope only: ChatGPT text injection, completion detection and correct-reply
+        identification. No debate protocol, no side panel — those are later phases.
+      </p>
+    </header>
+
+    <main>
+      <section class="card">
+        <h2>1. Adapter conformance harness</h2>
+        <p class="hint">
+          Runs the <em>real</em> adapter core against <code>mocks/mock-chatgpt.html</code> in the
+          iframe below. Offline, so no real provider messages are spent on debugging the injection
+          and detection logic itself.
+        </p>
+        <div class="row">
+          <button id="run-all" class="primary">Run all scenarios</button>
+          <button id="run-cycles">Run 20-cycle SEMI loop</button>
+          <button id="reset-mock">Reset mock</button>
+        </div>
+        <!-- Path is relative to dist/test-console/ because dist/ is the loadable
+             extension root; mocks/ is copied there verbatim by build.mjs. -->
+        <iframe id="mock-frame" src="../mocks/mock-chatgpt.html" title="Mock ChatGPT"></iframe>
+
+        <h3>Single steps</h3>
+        <div class="row">
+          <button id="step-probe">probe()</button>
+          <button id="step-state">getState()</button>
+          <button id="step-submit">submit() — stage text</button>
+          <button id="step-send">simulate human Send</button>
+          <button id="step-wait">waitForCompletion()</button>
+          <button id="step-read">readReply()</button>
+        </div>
+        <label class="field">
+          <span>Harness prompt text</span>
+          <input id="harness-prompt" type="text" value="Should cities ban private cars downtown?" />
+        </label>
+
+        <h3>Scenario results</h3>
+        <table id="scenario-table">
+          <thead>
+            <tr>
+              <th>Scenario</th>
+              <th>Result</th>
+              <th>Detail</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="card">
+        <h2>2. Live provider flow</h2>
+        <p class="hint">
+          Drives the real service worker against a real <code>chatgpt.com</code> tab. Requires the
+          tab to be open and loaded. <strong>SEMI</strong> stages the text and leaves the Send click
+          to you — a script-dispatched click carries <code>isTrusted: false</code>, so SEMI is the
+          mode that most closely resembles ordinary human use.
+        </p>
+        <div class="row">
+          <button id="refresh-candidates" class="primary">Refresh candidate tabs</button>
+        </div>
+        <label class="field">
+          <span>Bound tab (from passive probes)</span>
+          <select id="candidate-select"></select>
+        </label>
+        <label class="field">
+          <span>Objective (logged with the run)</span>
+          <input id="objective" type="text" value="Evaluate the question end-to-end" />
+        </label>
+        <label class="field">
+          <span>Prompt text</span>
+          <textarea id="live-prompt" rows="4">Answer in under 120 words with a clear position and one concrete example.</textarea>
+        </label>
+        <div class="row">
+          <button id="bind-run">Bind run to tab</button>
+          <button id="start-semi" class="primary">Start flow (SEMI — you click Send)</button>
+          <button id="start-auto">Start flow (AUTO — experimental)</button>
+        </div>
+        <p class="warn" id="auto-warning" hidden>
+          AUTO mode submits without a human click. It is experimental, off by default, and
+          GitHub-sideload-only. The site sees a synthetic click (<code>isTrusted: false</code>).
+        </p>
+        <pre id="live-out" class="out"></pre>
+      </section>
+
+      <section class="card">
+        <h2>3. Event log (IndexedDB, append-only source of truth)</h2>
+        <div class="row">
+          <button id="refresh-log">Refresh log</button>
+          <button id="clear-log" class="danger">Clear log</button>
+        </div>
+        <table id="log-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>type</th>
+              <th>runId</th>
+              <th>provider</th>
+              <th>detail</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+
+    <script type="module" src="test-console.js"></script>
+  </body>
+</html>
