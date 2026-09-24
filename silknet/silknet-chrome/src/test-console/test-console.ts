@@ -27,7 +27,7 @@ import {
 import type { AdapterState, ProbeResult } from '../content-scripts/shared/types';
 import type { StoredEvent } from '../background/event-log';
 
-const PROVIDER = 'chatgpt';
+let currentMockProvider = 'chatgpt';
 
 // ---------------------------------------------------------------------------
 // Small DOM helpers (textContent-only rendering)
@@ -127,30 +127,29 @@ function requireMock(): { doc: Document; win: MockWindow; mock: MockApi } {
   return { doc, win, mock };
 }
 
-let baseConfig: ProviderSelectorConfig | null = null;
+const configs = new Map<string, ProviderSelectorConfig>();
 
-async function loadBaseConfig(): Promise<ProviderSelectorConfig> {
-  if (baseConfig) return baseConfig;
-  const response = await fetch(chrome.runtime.getURL('selectors/chatgpt.json'));
-  if (!response.ok) throw new Error(`could not fetch selectors/chatgpt.json (${response.status})`);
+async function loadBaseConfig(provider = currentMockProvider): Promise<ProviderSelectorConfig> {
+  const existing = configs.get(provider);
+  if (existing) return existing;
+  const response = await fetch(chrome.runtime.getURL(`selectors/${provider}.json`));
+  if (!response.ok) throw new Error(`could not fetch selectors/${provider}.json (${response.status})`);
   const raw: unknown = await response.json();
   const validation = validateSelectorConfig(raw);
-  if (!validation.ok) throw new Error(`selectors/chatgpt.json failed validation: ${validation.reason}`);
-  baseConfig = validation.config;
-  return baseConfig;
+  if (!validation.ok) throw new Error(`selectors/${provider}.json failed validation: ${validation.reason}`);
+  configs.set(provider, validation.config);
+  return validation.config;
 }
 
 function createHarness(): Harness {
   const { doc, win, mock } = requireMock();
-  const config = baseConfig;
-  if (!config) throw new Error('selector config not loaded');
+  const config = configs.get(currentMockProvider);
+  if (!config) throw new Error(`selector config for ${currentMockProvider} not loaded`);
 
   // Two deliberate deviations from production, both narrow:
   //   - origins is rewritten to the mock's own origin so the origin gate passes
-  //     for a page that is not actually chatgpt.com. Origin gating itself is
-  //     verified against the real site, not here.
-  //   - isTopFrame is forced true because the mock runs inside an iframe, yet it
-  //     stands in for a top-level provider tab.
+  //     for a page that is not actually the real provider origin.
+  //   - isTopFrame is forced true because the mock runs inside an iframe.
   const harnessConfig: ProviderSelectorConfig = {
     ...config,
     match: { origins: [doc.location.origin], topFrameOnly: false },
@@ -160,7 +159,7 @@ function createHarness(): Harness {
     document: doc,
     location: { href: doc.location.href, origin: doc.location.origin },
     isTopFrame: true,
-    provider: PROVIDER,
+    provider: currentMockProvider,
     tabId: 0,
     frameId: 0,
     documentId: crypto.randomUUID(),
@@ -637,14 +636,24 @@ function wire(): void {
     })().catch((err: unknown) => setText(out, `clear log failed: ${describe(err)}`));
   });
 
+  const mockSelect = el<HTMLSelectElement>('mock-provider-select');
+  mockSelect.addEventListener('change', () => {
+    currentMockProvider = mockSelect.value;
+    const iframe = frame();
+    iframe.src = currentMockProvider === 'claude' ? '../mocks/mock-claude.html' : '../mocks/mock-chatgpt.html';
+    void loadBaseConfig(currentMockProvider)
+      .then(() => harnessLog(`Switched harness to ${currentMockProvider} mock — ready`))
+      .catch((err: unknown) => harnessLog(`Failed loading config: ${describe(err)}`));
+  });
+
   frame().addEventListener('load', () => {
-    void loadBaseConfig()
-      .then(() => harnessLog('mock loaded and selector config validated — harness ready'))
+    void loadBaseConfig(currentMockProvider)
+      .then(() => harnessLog(`${currentMockProvider} mock loaded and selector config validated — harness ready`))
       .catch((err: unknown) => harnessLog(`config load failed: ${describe(err)}`));
   });
 
   if (frame().contentDocument?.readyState === 'complete') {
-    void loadBaseConfig().catch((err: unknown) => harnessLog(`config load failed: ${describe(err)}`));
+    void loadBaseConfig(currentMockProvider).catch((err: unknown) => harnessLog(`config load failed: ${describe(err)}`));
   }
 
   void refreshCandidates();

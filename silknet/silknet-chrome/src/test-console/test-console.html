@@ -23,13 +23,20 @@
           and detection logic itself.
         </p>
         <div class="row">
+          <label class="field" style="max-width: 260px;">
+            <span>Harness mock provider</span>
+            <select id="mock-provider-select">
+              <option value="chatgpt" selected>ChatGPT (mock-chatgpt.html)</option>
+              <option value="claude">Claude (mock-claude.html)</option>
+            </select>
+          </label>
           <button id="run-all" class="primary">Run all scenarios</button>
           <button id="run-cycles">Run 20-cycle SEMI loop</button>
           <button id="reset-mock">Reset mock</button>
         </div>
         <!-- Path is relative to dist/test-console/ because dist/ is the loadable
              extension root; mocks/ is copied there verbatim by build.mjs. -->
-        <iframe id="mock-frame" src="../mocks/mock-chatgpt.html" title="Mock ChatGPT"></iframe>
+        <iframe id="mock-frame" src="../mocks/mock-chatgpt.html" title="Provider Mock"></iframe>
 
         <h3>Single steps</h3>
         <div class="row">

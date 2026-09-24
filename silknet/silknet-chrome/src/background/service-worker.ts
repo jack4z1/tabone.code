@@ -38,7 +38,7 @@ import {
 } from '../content-scripts/shared/selectors';
 import type { AdapterCapabilities, ProbeResult } from '../content-scripts/shared/types';
 
-const PROVIDERS = ['chatgpt'] as const;
+const PROVIDERS = ['chatgpt', 'claude'] as const;
 type ProviderId = (typeof PROVIDERS)[number];
 
 const isProviderId = (v: unknown): v is ProviderId =>
@@ -53,6 +53,7 @@ interface LoadedProvider {
 
 const PROVIDER_SCRIPTS: Record<ProviderId, string> = {
   chatgpt: 'content-scripts/adapter-chatgpt.js',
+  claude: 'content-scripts/adapter-claude.js',
 };
 
 const loadedProviders = new Map<ProviderId, LoadedProvider>();

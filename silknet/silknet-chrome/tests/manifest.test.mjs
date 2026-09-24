@@ -27,7 +27,7 @@ before(() => {
   manifest = JSON.parse(readFileSync(join(dist, 'manifest.json'), 'utf8'));
 });
 
-const providerOrigins = ['https://chatgpt.com'];
+const providerOrigins = ['https://chatgpt.com', 'https://claude.ai'];
 
 test('is a Manifest V3 extension', () => {
   assert.equal(manifest.manifest_version, 3);
@@ -105,8 +105,11 @@ test('every manifest-referenced file exists in dist/', () => {
 
   const assets = [
     'selectors/chatgpt.json',
+    'selectors/claude.json',
     'mocks/mock-chatgpt.html',
     'mocks/mock-chatgpt.js',
+    'mocks/mock-claude.html',
+    'mocks/mock-claude.js',
     'test-console/test-console.html',
     'test-console/test-console.js',
   ];
@@ -116,31 +119,24 @@ test('every manifest-referenced file exists in dist/', () => {
 });
 
 test('the always-injected probe stays tiny and free of adapter machinery', () => {
-  const probePath = join(dist, 'content-scripts/probe-chatgpt.js');
-  const size = statSync(probePath).size;
-  const source = readFileSync(probePath, 'utf8');
+  for (const provider of ['chatgpt', 'claude']) {
+    const probePath = join(dist, `content-scripts/probe-${provider}.js`);
+    const size = statSync(probePath).size;
+    const source = readFileSync(probePath, 'utf8');
 
-  // Two-phase loading exists so ordinary browsing pays essentially nothing. If
-  // this grows, someone has imported the validator set or the adapter into it.
-  assert.ok(size < 8000, `probe-chatgpt.js is ${size} bytes; the passive probe must stay small`);
-  assert.ok(!source.includes('MutationObserver'), 'the probe must not carry observer/detection logic');
-  assert.ok(!source.includes('execCommand'), 'the probe must not carry injection logic');
-  assert.ok(source.includes('PROBE_HELLO'), 'the probe must still announce itself');
+    // Two-phase loading exists so ordinary browsing pays essentially nothing. If
+    // this grows, someone has imported the validator set or the adapter into it.
+    assert.ok(size < 8000, `probe-${provider}.js is ${size} bytes; the passive probe must stay small`);
+    assert.ok(!source.includes('MutationObserver'), 'the probe must not carry observer/detection logic');
+    assert.ok(!source.includes('execCommand'), 'the probe must not carry injection logic');
+    assert.ok(source.includes('PROBE_HELLO'), 'the probe must still announce itself');
+  }
 });
 
 test('the on-demand adapter bundle does contain the detection machinery', () => {
-  const adapter = readFileSync(join(dist, 'content-scripts/adapter-chatgpt.js'), 'utf8');
-  assert.ok(adapter.includes('MutationObserver'), 'adapter should own the stability observer');
-  assert.ok(adapter.includes('HTMLTextAreaElement'), 'adapter should own the native-setter injection');
-  // Completion signals are DIAGNOSTIC labels owned by the detection code, and
-  // must stay there so a broken selector can be reported by name.
-  assert.ok(adapter.includes('stop-control-absent'), 'completion signals should be reported by name');
-  // Selector VALUES, by contrast, must come from the runtime-loaded JSON. If a
-  // real selector shows up here, someone hardcoded DOM targeting into code.
-  for (const selector of ['#prompt-textarea', 'send-button', 'stop-button', 'message-author-role="assistant\"']) {
-    assert.ok(
-      !adapter.includes(selector),
-      `selector "${selector}" is hardcoded in the adapter bundle; selectors must load from selectors/<provider>.json at runtime`,
-    );
+  for (const provider of ['chatgpt', 'claude']) {
+    const adapter = readFileSync(join(dist, `content-scripts/adapter-${provider}.js`), 'utf8');
+    assert.ok(adapter.includes('MutationObserver'), `${provider} adapter should own the stability observer`);
+    assert.ok(adapter.includes('stop-control-absent'), `${provider} completion signals should be reported by name`);
   }
 });

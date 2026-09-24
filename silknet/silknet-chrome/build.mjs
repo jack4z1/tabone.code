@@ -40,6 +40,20 @@ const bundles = [
     format: 'iife',
     sourcemap: 'inline',
   },
+  // Phase-1 probe for Claude: always injected on claude.ai, must stay tiny.
+  {
+    entry: 'src/content-scripts/probe-claude.ts',
+    outdir: 'dist/content-scripts',
+    format: 'iife',
+    sourcemap: false,
+  },
+  // Phase-2 adapter for Claude: dynamically injected into bound Claude tabs only.
+  {
+    entry: 'src/content-scripts/adapter-claude.ts',
+    outdir: 'dist/content-scripts',
+    format: 'iife',
+    sourcemap: 'inline',
+  },
   // Dev-only test console.
   {
     entry: 'src/test-console/test-console.ts',
