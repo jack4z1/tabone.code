@@ -248,7 +248,7 @@ async function runDebate(): Promise<void> {
         showSemiBanner(provider, boundTabs[provider]!.tabId);
       }
 
-      const results = await ui<Array<{ provider: string; status: string; reply?: string; detail?: string }>>('startFlow', {
+      const { results } = await ui<{ results: Array<{ provider: string; status: string; reply?: string; detail?: string }> }>('startFlow', {
         runId,
         text: openingPrompt,
         autoSend,
@@ -258,7 +258,7 @@ async function runDebate(): Promise<void> {
 
       hideSemiBanner();
 
-      const result = results[0];
+      const result = results?.[0];
       const reply = result?.reply ?? `[No response captured: ${result?.detail ?? 'unknown'}]`;
       round1Replies[provider] = reply;
 
@@ -296,7 +296,7 @@ async function runDebate(): Promise<void> {
           showSemiBanner(provider, boundTabs[provider]!.tabId);
         }
 
-        const results = await ui<Array<{ provider: string; status: string; reply?: string; detail?: string }>>('startFlow', {
+        const { results } = await ui<{ results: Array<{ provider: string; status: string; reply?: string; detail?: string }> }>('startFlow', {
           runId,
           text: critiquePrompt,
           autoSend,
@@ -306,7 +306,7 @@ async function runDebate(): Promise<void> {
 
         hideSemiBanner();
 
-        const result = results[0];
+        const result = results?.[0];
         const reply = result?.reply ?? `[No critique captured: ${result?.detail ?? 'unknown'}]`;
         round2Critiques[provider] = reply;
 
@@ -342,7 +342,7 @@ async function runDebate(): Promise<void> {
           showSemiBanner(provider, boundTabs[provider]!.tabId);
         }
 
-        const results = await ui<Array<{ provider: string; status: string; reply?: string; detail?: string }>>('startFlow', {
+        const { results } = await ui<{ results: Array<{ provider: string; status: string; reply?: string; detail?: string }> }>('startFlow', {
           runId,
           text: rebuttalPrompt,
           autoSend,
@@ -352,7 +352,7 @@ async function runDebate(): Promise<void> {
 
         hideSemiBanner();
 
-        const result = results[0];
+        const result = results?.[0];
         const reply = result?.reply ?? `[No final statement captured: ${result?.detail ?? 'unknown'}]`;
 
         const turn: DebateTurn = {
