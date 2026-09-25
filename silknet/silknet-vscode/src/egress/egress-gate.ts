@@ -153,12 +153,16 @@ export function applyDecision(decision: EgressDecision): GateOutcome {
     pending = null;
     return { report: null, redaction: null, consumed: false, note: 'no selected files matched the report' };
   }
-  let text = files
+  const outgoingFiles: FileExcerpt[] = redactionLabels !== null
+    ? files.map((f) => ({
+        path: f.path,
+        lines: applyRedactions(f.lines, f.path, redactionLabels),
+        ...(f.truncatedAt !== undefined ? { truncatedAt: f.truncatedAt } : {}),
+      }))
+    : files;
+  const text = outgoingFiles
     .map((f) => `--- ${f.path} ---\n${f.lines}`)
     .join('\n\n');
-  if (redactionLabels !== null) {
-    text = applyRedactions(text, 'selected-files', redactionLabels);
-  }
   const approxLines = text.split('\n').length;
   const truncated = files.length < current.report.files.length || current.report.truncated;
   pending = null;
@@ -167,7 +171,7 @@ export function applyDecision(decision: EgressDecision): GateOutcome {
     report: {
       type: 'CONTEXT_REPORT',
       debateId: current.debateId,
-      files,
+      files: outgoingFiles,
       approxLines,
       truncated,
     },

@@ -62,7 +62,7 @@ const DENYLIST_SUFFIXES = ['.pem', '.key'];
 // U+0000–U+001F, U+007F, U+0080–U+009F control ranges, plus path separators.
 // (Written without \s so identifiers stay ASCII-clean; ranges are explicit.)
 const CONTROL_CHARS = /[\u0000-\u001F\u007F\u0080-\u009F]/;
-const PATH_SEPARATOR = /[\\/]/;
+const PATH_SEPARATOR = /[\\/:]/;
 
 /**
  * True when the basename is safe to include in a report or prompt: no control

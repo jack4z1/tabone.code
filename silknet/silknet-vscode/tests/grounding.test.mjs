@@ -67,6 +67,8 @@ describe('filename sanitization', () => {
   it('rejects path separators inside basenames', () => {
     assert.equal(mod.isSafeBasename('a/b'), false);
     assert.equal(mod.isSafeBasename('a\\b'), false);
+    assert.equal(mod.isSafeBasename('C:'), false);
+    assert.equal(mod.isSafeBasename('file:stream'), false);
   });
 
   it('rejects dot-trickery and empty names', () => {

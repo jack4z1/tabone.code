@@ -110,7 +110,7 @@ export function applyRedactions(
       // Preserve the matched prefix for env-style rules so the assignment
       // stays readable; the credential value becomes the label.
       const label = effective.get(rule.pattern) ?? rule.label;
-      const eq = match.match(/^([A-Z_]+\s*=\s*["']?)/);
+      const eq = match.match(/^([A-Za-z0-9_]+\s*[:=]\s*["']?)/);
       return eq?.[1] !== undefined ? `${eq[1]}${label}` : label;
     });
   }

@@ -80,10 +80,12 @@ describe('redaction patterns', () => {
   });
 
   it('redact-and-continue replaces the value, preserving assignments', () => {
-    const out = redaction.applyRedactions('const AWS = "AKIAIOSFODNN7EXAMPLE";\npassword = "superlongpasswordvalue123456";', 'f.ts');
+    const out = redaction.applyRedactions('const AWS = "AKIAIOSFODNN7EXAMPLE";\npassword = "superlongpasswordvalue123456";\napi_key: "abcdef1234567890abcdef1234567890"', 'f.ts');
     assert.ok(!out.includes('AKIAIOSFODNN7EXAMPLE'));
     assert.ok(out.includes('[REDACTED:'), 'value replaced by a category label');
     assert.ok(out.includes('AWS ='), 'assignment structure preserved');
+    assert.ok(out.includes('password ='), 'lowercase assignment structure preserved');
+    assert.ok(out.includes('api_key:'), 'colon assignment structure preserved');
   });
 });
 
@@ -145,6 +147,20 @@ describe('egress gate', () => {
     await gate.openGate({ debateId: 'd6', round: 0 }, process.cwd(), { useModelSummary: false });
     const shipped = gate.applyDecision({ kind: 'approved', mode: 'report-only' });
     assert.notEqual(shipped.report, null);
+  });
+
+  it('selected-files mode applies redaction to individual files in the report', async () => {
+    const { manifest } = await gate.openGate({ debateId: 'd-redact-files', round: 0 }, process.cwd(), { useModelSummary: false });
+    const paths = manifest.paths ?? [];
+    assert.ok(paths.length >= 1);
+    const outcome = gate.applyDecision({
+      kind: 'approved',
+      mode: 'selected-files',
+      selectedFiles: [paths[0]],
+    });
+    assert.notEqual(outcome.report, null);
+    assert.equal(outcome.report.files.length, 1);
+    assert.equal(typeof outcome.report.files[0].lines, 'string');
   });
 
   it('decisions with no pending gate are no-ops', () => {
