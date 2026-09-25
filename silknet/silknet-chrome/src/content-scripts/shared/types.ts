@@ -9,6 +9,8 @@ export type AdapterState = 'idle' | 'generating' | 'done' | 'blocked' | 'unknown
 
 export interface ProbeResult {
   recognized: boolean;
+  /** whether the tab has zero conversation turns (clean/empty pre-run check) */
+  isClean?: boolean;
   /** why not recognized, for the diagnostic dot */
   reason?: string;
 }
@@ -42,6 +44,8 @@ export interface ProviderAdapter {
    *  visibly, not 90 seconds into a run. */
   probe(): Promise<ProbeResult>;
   getState(): Promise<AdapterState>;
+  /** Check if the conversation is completely empty/clean for Round 0 peer-blindness */
+  isClean(): boolean;
   submit(text: string, opts?: { autoSend?: boolean }): Promise<SubmitResult>;
   waitForCompletion(
     submissionId: string,

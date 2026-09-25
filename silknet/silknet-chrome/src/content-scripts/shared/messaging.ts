@@ -20,6 +20,7 @@ export type AdapterOp =
   | 'configure'
   | 'probe'
   | 'getState'
+  | 'isClean'
   | 'submit'
   | 'waitForCompletion'
   | 'readReply'
@@ -33,7 +34,11 @@ export type UiOp =
   | 'getRunState'
   | 'readLog'
   | 'clearLog'
-  | 'probeBoundTabs';
+  | 'probeBoundTabs'
+  | 'interject'
+  | 'exportLog'
+  | 'purgeLog'
+  | 'applyRetention';
 
 /** content-script(probe) -> service worker: "I am a valid provider tab." */
 export interface ProbeHelloMessage {
@@ -109,6 +114,17 @@ export interface PushMessage {
   payload: unknown;
 }
 
+/** content script -> service worker: human clicked send with modified text. */
+export interface TamperBlockedMessage {
+  ns: typeof NS;
+  kind: 'TAMPER_BLOCKED';
+  provider: string;
+  documentId: string;
+  expectedText: string;
+  actualText: string;
+  timestamp: number;
+}
+
 export type AnyMessage =
   | ProbeHelloMessage
   | AdapterReadyMessage
@@ -116,7 +132,8 @@ export type AnyMessage =
   | CmdResultMessage
   | UiMessage
   | UiResultMessage
-  | PushMessage;
+  | PushMessage
+  | TamperBlockedMessage;
 
 // ---------------------------------------------------------------------------
 // Validators
@@ -309,3 +326,17 @@ export function parseAdapterState(v: unknown): AdapterState | null {
     ? v
     : null;
 }
+
+export const isTamperBlockedMessage = (v: unknown): v is TamperBlockedMessage => {
+  if (!isRecord(v)) return false;
+  return (
+    v['ns'] === NS &&
+    v['kind'] === 'TAMPER_BLOCKED' &&
+    isNonEmptyStr(v['provider']) &&
+    isNonEmptyStr(v['documentId']) &&
+    isStr(v['expectedText']) &&
+    isStr(v['actualText']) &&
+    typeof v['timestamp'] === 'number'
+  );
+};
+

@@ -49,6 +49,21 @@ const env: AdapterEnv = {
   documentId: g.__silknet_document_id ?? crypto.randomUUID(),
   now: () => Date.now(),
   randomId: () => crypto.randomUUID(),
+  onTamperBlocked: (expectedText: string, actualText: string) => {
+    try {
+      void chrome.runtime.sendMessage({
+        ns: NS,
+        kind: 'TAMPER_BLOCKED',
+        provider: PROVIDER,
+        documentId: env.documentId,
+        expectedText,
+        actualText,
+        timestamp: Date.now(),
+      }).catch(() => undefined);
+    } catch {
+      /* extension context invalidated */
+    }
+  },
 };
 
 /**
@@ -144,6 +159,8 @@ if (g[INSTALL_FLAG]) {
           return { ok: true, result: await adapter.probe() };
         case 'getState':
           return { ok: true, result: await adapter.getState() };
+        case 'isClean':
+          return { ok: true, result: adapter.isClean() };
         case 'capabilities':
           return { ok: true, result: adapter.capabilities() };
         case 'recover':

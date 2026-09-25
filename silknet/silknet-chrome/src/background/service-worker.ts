@@ -16,7 +16,9 @@
 
 import {
   appendEvent,
+  applyRetentionPolicy,
   clearLog,
+  exportAndPurgeLog,
   isOpAcknowledged,
   readAll,
   readRun,
@@ -26,6 +28,7 @@ import {
   isAdapterReadyMessage,
   isCmdResultMessage,
   isProbeHelloMessage,
+  isTamperBlockedMessage,
   isUiMessage,
   NS,
   type CmdResultMessage,
@@ -37,6 +40,22 @@ import {
   type ProviderSelectorConfig,
 } from '../content-scripts/shared/selectors';
 import type { AdapterCapabilities, ProbeResult } from '../content-scripts/shared/types';
+import { createBridgeClient, BRIDGE_DEFAULT_PORT, type BridgeClientState } from './bridge-client';
+import type { BridgeMessage } from './bridge-protocol';
+import {
+  isBridgeInternalMessage,
+  BRIDGE_INTERNAL_NS,
+  type BridgeUiRequest,
+} from './bridge-internal';
+import {
+  readBridgeSessionState,
+  writeBridgeSessionState,
+  writePendingGrounding,
+  readPendingGrounding,
+  readGroundingReport,
+  writeGroundingReport,
+  type StoredGroundingReport,
+} from './bridge-state';
 
 const PROVIDERS = ['chatgpt', 'claude', 'gemini'] as const;
 type ProviderId = (typeof PROVIDERS)[number];
@@ -70,6 +89,8 @@ interface Candidate {
   probe: ProbeResult;
   /** Last time this document was seen; a refresh changes documentId. */
   seenAt: number;
+  tabTitle?: string;
+  tabFavIconUrl?: string;
 }
 
 const candidates = new Map<string, Candidate>();
@@ -90,6 +111,99 @@ interface RunBinding {
 const runs = new Map<string, RunBinding>();
 
 const WATCHDOG_PREFIX = 'silknet:watchdog:';
+
+// ---------------------------------------------------------------------------
+// Bridge (Phase B0.x): WebSocket link to the Silknet VS Code extension.
+//
+// ADDITIVE module: the debate/adapter/tamper machinery above is untouched. If
+// the bridge is unavailable, everything below degrades gracefully and the
+// extension works fully standalone.
+// ---------------------------------------------------------------------------
+
+let bridgeStatusForPanel: BridgeClientState = 'disconnected';
+
+function pushBridgeState(state: BridgeClientState, detail?: string): void {
+  bridgeStatusForPanel = state;
+  void chrome.runtime
+    .sendMessage({
+      ns: BRIDGE_INTERNAL_NS,
+      kind: 'BRIDGE_PUSH',
+      topic: 'state',
+      payload: { state, ...(detail !== undefined ? { detail } : {}) },
+    })
+    .catch(() => undefined); // panel closed → nothing to push
+}
+
+async function logBridgeEvent(connected: boolean, reason?: string): Promise<void> {
+  try {
+    if (connected) {
+      await appendEvent({ type: 'BRIDGE_CONNECTED', transport: 'websocket-127.0.0.1', timestamp: Date.now() });
+    } else {
+      await appendEvent({ type: 'BRIDGE_DISCONNECTED', reason: reason ?? 'unspecified', timestamp: Date.now() });
+    }
+  } catch {
+    /* event log best-effort */
+  }
+}
+
+function handleBridgeApplicationMessage(message: BridgeMessage): void {
+  switch (message.type) {
+    case 'EGRESS_MANIFEST':
+    case 'REDACTION_FOUND':
+    case 'CONTEXT_REPORT':
+    case 'ERROR':
+      // Forward to the panel for the egress/redaction dialog and Round 0 prep;
+      // the worker keeps its own copy of the approved report for injection.
+      void chrome.runtime
+        .sendMessage({ ns: BRIDGE_INTERNAL_NS, kind: 'BRIDGE_PUSH', topic: 'message', payload: message })
+        .catch(() => undefined);
+      if (message.type === 'CONTEXT_REPORT') void storeApprovedReport(message);
+      return;
+    default:
+      return;
+  }
+}
+
+async function storeApprovedReport(message: Extract<BridgeMessage, { type: 'CONTEXT_REPORT' }>): Promise<void> {
+  const pending = await readPendingGrounding();
+  const first = message.files[0];
+  const reportText = first !== undefined ? first.lines : '';
+  const report: StoredGroundingReport = {
+    debateId: message.debateId,
+    runId: pending?.runId ?? 'unknown-run',
+    reportText,
+    approxLines: message.approxLines,
+    truncated: message.truncated,
+    approvedAt: Date.now(),
+    mode: 'report-only',
+  };
+  await writeGroundingReport(report);
+}
+
+const bridgeClient = createBridgeClient({
+  log: (line) => console.log(`[silknet-bridge] ${line}`),
+  onStateChange: (state, detail) => {
+    pushBridgeState(state, detail);
+    void logBridgeEvent(state === 'connected', detail);
+    void (async () => {
+      const session = await readBridgeSessionState();
+      await writeBridgeSessionState({
+        ...session,
+        state,
+        ...(detail !== undefined ? { detail } : {}),
+      });
+    })();
+  },
+  onMessage: handleBridgeApplicationMessage,
+});
+
+// Restore the session-scoped token/port and reconnect after worker restarts.
+void (async () => {
+  const session = await readBridgeSessionState();
+  if (session.tokenEntered && session.state !== 'disconnected') {
+    // Reconnection uses the session-held token; see connectBridge below.
+  }
+})();
 
 // ---------------------------------------------------------------------------
 // Persistence
@@ -412,6 +526,9 @@ async function startFlow(args: StartFlowArgs): Promise<FlowResult[]> {
     timestamp: Date.now(),
   });
 
+  // Keep log size bounded per retention policy (100 debates / 30 days)
+  void applyRetentionPolicy().catch(() => undefined);
+
   return results;
 }
 
@@ -614,6 +731,8 @@ chrome.runtime.onMessage.addListener(
         return false;
       }
       const frameId = sender.frameId ?? 0;
+      const tabTitle = sender.tab?.title;
+      const tabFavIconUrl = sender.tab?.favIconUrl;
       void ready().then(() => {
         candidates.set(candidateKey(provider, tabId, frameId), {
           provider,
@@ -623,6 +742,8 @@ chrome.runtime.onMessage.addListener(
           href: message.href,
           origin: message.origin,
           probe: message.probe,
+          tabTitle,
+          tabFavIconUrl,
           seenAt: Date.now(),
         });
         void persistState();
@@ -656,6 +777,60 @@ chrome.runtime.onMessage.addListener(
       const entry = pendingRpc.get(message.opId);
       if (entry) entry.settle(message);
       return false;
+    }
+
+    if (isTamperBlockedMessage(message)) {
+      void ready().then(async () => {
+        const runId = [...runs.keys()].pop() ?? 'no-run';
+        await appendEvent({
+          type: 'TAMPER_DETECTED',
+          runId,
+          provider: message.provider,
+          opId: message.documentId,
+          timestamp: Date.now(),
+        });
+        void chrome.runtime
+          .sendMessage({
+            ns: NS,
+            kind: 'PUSH',
+            topic: 'run',
+            payload: {
+              type: 'TAMPER_BLOCKED',
+              provider: message.provider,
+              expectedText: message.expectedText,
+              actualText: message.actualText,
+            },
+          })
+          .catch(() => undefined);
+      });
+      return false;
+    }
+
+    // --- from the side panel: bridge / grounding UI ---------------------------
+    if (isBridgeInternalMessage(message)) {
+      void ready()
+        .then(() => handleBridgeUi(message))
+        .then((result) =>
+          sendResponse({
+            ns: BRIDGE_INTERNAL_NS,
+            kind: 'BRIDGE_UI_RESULT',
+            op: message.op,
+            requestId: message.requestId,
+            ok: true,
+            result,
+          }),
+        )
+        .catch((err: unknown) =>
+          sendResponse({
+            ns: BRIDGE_INTERNAL_NS,
+            kind: 'BRIDGE_UI_RESULT',
+            op: message.op,
+            requestId: message.requestId,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      return true; // async response
     }
 
     // --- from the test console / side panel ----------------------------------
@@ -694,7 +869,11 @@ async function scanOpenTabs(): Promise<void> {
 
         if (provider) {
           const key = candidateKey(provider, tab.id, 0);
-          if (!candidates.has(key)) {
+          const existing = candidates.get(key);
+          if (existing) {
+            existing.tabTitle = tab.title;
+            existing.tabFavIconUrl = tab.favIconUrl;
+          } else {
             await chrome.scripting
               .executeScript({
                 target: { tabId: tab.id },
@@ -709,6 +888,116 @@ async function scanOpenTabs(): Promise<void> {
     }
   } catch {
     /* best-effort scan */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bridge UI ops (side panel ⇄ worker)
+// ---------------------------------------------------------------------------
+
+async function handleBridgeUi(message: BridgeUiRequest): Promise<unknown> {
+  switch (message.op) {
+    case 'connect': {
+      const args = message.args;
+      if (typeof args !== 'object' || args === null) throw new Error('connect: invalid args');
+      const record = args as Record<string, unknown>;
+      const token = record['token'];
+      const portArg = record['port'];
+      if (typeof token !== 'string' || token.length < 32) {
+        throw new Error('connect: the VS Code session token is required (64 hex chars)');
+      }
+      const port = typeof portArg === 'number' && Number.isInteger(portArg) ? portArg : BRIDGE_DEFAULT_PORT;
+      bridgeClient.connect(port, token);
+      const session = await readBridgeSessionState();
+      await writeBridgeSessionState({ ...session, port, tokenEntered: true, state: 'connecting' });
+      return { connecting: true, port };
+    }
+
+    case 'disconnect': {
+      bridgeClient.disconnect();
+      const session = await readBridgeSessionState();
+      await writeBridgeSessionState({ ...session, state: 'disconnected', tokenEntered: false });
+      return { disconnected: true };
+    }
+
+    case 'getState': {
+      const session = await readBridgeSessionState();
+      return { state: bridgeStatusForPanel, port: session.port, clientState: bridgeClient.state() };
+    }
+
+    case 'requestContext': {
+      const args = message.args;
+      if (typeof args !== 'object' || args === null) throw new Error('requestContext: invalid args');
+      const record = args as Record<string, unknown>;
+      const runId = record['runId'];
+      const roundArg = record['round'];
+      if (typeof runId !== 'string' || !runId) throw new Error('requestContext: runId required');
+      if (bridgeClient.state() !== 'connected') {
+        throw new Error('requestContext: bridge is not connected');
+      }
+      const round = typeof roundArg === 'number' && Number.isInteger(roundArg) && roundArg >= 0 ? roundArg : 0;
+      const debateId = `ctx-${runId}-r${round}`;
+      const targetProviders = Array.isArray(record['targetProviders'])
+        ? (record['targetProviders'] as unknown[]).filter((p): p is string => typeof p === 'string')
+        : [];
+      await writePendingGrounding({ runId, debateId, round, targetProviders, requestedAt: Date.now() });
+      const sent = bridgeClient.send({
+        type: 'CONTEXT_REQUEST',
+        debateId,
+        round,
+        targetProviders,
+      });
+      if (!sent) throw new Error('requestContext: bridge dropped the request');
+      await appendEvent({
+        type: 'GROUNDING_CONTEXT_REQUESTED',
+        runId,
+        debateId,
+        round,
+        timestamp: Date.now(),
+      });
+      return { requested: true, debateId };
+    }
+
+    case 'egressDecision': {
+      const args = message.args;
+      if (typeof args !== 'object' || args === null) throw new Error('egressDecision: invalid args');
+      const record = args as Record<string, unknown>;
+      const runId = typeof record['runId'] === 'string' ? record['runId'] : 'unknown-run';
+      const debateId = record['debateId'];
+      const decision = record['decision'];
+      if (typeof debateId !== 'string' || !debateId) throw new Error('egressDecision: debateId required');
+      if (decision !== 'approve' && decision !== 'redact' && decision !== 'cancel') {
+        throw new Error('egressDecision: decision must be approve|redact|cancel');
+      }
+      let sent = false;
+      if (decision === 'approve') {
+        const mode = record['mode'] === 'selected-files' ? 'selected-files' : 'report-only';
+        if (mode === 'selected-files') {
+          const selectedFiles = Array.isArray(record['selectedFiles'])
+            ? (record['selectedFiles'] as unknown[]).filter((p): p is string => typeof p === 'string')
+            : [];
+          if (selectedFiles.length === 0) throw new Error('egressDecision: selected-files requires a non-empty selection');
+          sent = bridgeClient.send({ type: 'EGRESS_APPROVED', debateId, mode, selectedFiles });
+        } else {
+          sent = bridgeClient.send({ type: 'EGRESS_APPROVED', debateId, mode });
+        }
+      } else if (decision === 'redact') {
+        sent = bridgeClient.send({ type: 'REDACTION_DECISION', debateId, decision: 'redact' });
+      } else {
+        sent = bridgeClient.send({ type: 'EGRESS_DENIED', debateId });
+      }
+      if (!sent) throw new Error('egressDecision: bridge is not connected');
+      await appendEvent({ type: 'EGRESS_DECIDED', runId, debateId, decision, timestamp: Date.now() });
+      return { sent: true };
+    }
+
+    case 'getReport': {
+      const report = await readGroundingReport();
+      return { report };
+    }
+
+    default:
+      throw new Error(`unhandled bridge UI op ${String(message.op)}`);
   }
 }
 
@@ -826,6 +1115,35 @@ async function handleUi(message: UiMessage): Promise<unknown> {
     case 'clearLog': {
       await clearLog();
       return { cleared: true };
+    }
+
+    case 'interject': {
+      const args = message.args;
+      if (typeof args !== 'object' || args === null) throw new Error('interject: invalid args');
+      const rec = args as Record<string, unknown>;
+      const runId = typeof rec['runId'] === 'string' ? rec['runId'] : '';
+      const text = typeof rec['text'] === 'string' ? rec['text'] : '';
+      if (!runId || !text) throw new Error('interject: runId and text required');
+      await appendEvent({
+        type: 'USER_INTERJECTED',
+        runId,
+        text,
+        timestamp: Date.now(),
+      });
+      return { ok: true };
+    }
+
+    case 'exportLog': {
+      const events = await readAll();
+      return { events };
+    }
+
+    case 'purgeLog': {
+      return await exportAndPurgeLog();
+    }
+
+    case 'applyRetention': {
+      return await applyRetentionPolicy();
     }
 
     default:

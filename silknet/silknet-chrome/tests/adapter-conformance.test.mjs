@@ -17,7 +17,7 @@ import * as esbuild from 'esbuild';
 import { JSDOM } from 'jsdom';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const buildDir = join(root, '.test-build');
+const buildDir = join(root, '.test-build-chatgpt');
 
 /** Bundle the TypeScript core to ESM once, so the tests import the shipped code. */
 await esbuild.build({
@@ -191,6 +191,8 @@ test('probe recognises the mock as ChatGPT', async () => {
   const ctx = makeAdapter();
   const probe = await ctx.adapter.probe();
   assert.equal(probe.recognized, true, `probe failed: ${probe.reason}`);
+  assert.equal(probe.isClean, true, 'empty mock must report isClean: true');
+  assert.equal(ctx.adapter.isClean(), true, 'adapter.isClean() must report true on empty chat');
   assert.equal(await ctx.adapter.getState(), 'idle');
   const capabilities = ctx.adapter.capabilities();
   assert.equal(capabilities.inputType, 'textarea');
@@ -257,9 +259,9 @@ test("the reply excludes the turn's UI chrome (label, Copy/Regenerate)", async (
   const { completion, reply } = await semiTurn(ctx, prompt);
   assert.equal(completion.complete, true);
   assert.equal(reply, ctx.mock.expectedReply(prompt, 1));
-  // The turn element also contains a speaker label and reply-action buttons;
-  // reading the turn itself would splice "ChatGPT", "Copy" and "Regenerate"
-  // into the reply text.
+  assert.equal(ctx.adapter.isClean(), false, 'isClean() must report false after a turn');
+  const postProbe = await ctx.adapter.probe();
+  assert.equal(postProbe.isClean, false, 'probe.isClean must report false after a turn');
   assert.doesNotMatch(reply, /Copy|Regenerate|ChatGPT/);
 });
 
@@ -408,6 +410,46 @@ test('injection goes through the native setter and is readable back', async () =
   assert.equal(core.composerMatches(ctx.env, ctx.config, 'something else'), false);
   assert.equal(typeof submitted.submissionId, 'string');
   assert.ok(submitted.submissionId.length > 0);
+});
+
+test('tamper detection blocks Send click if composer text is modified before human send', async () => {
+  mock().reset();
+  const ctx = makeAdapter();
+  const textarea = ctx.env.document.getElementById('prompt-textarea');
+  const sendButton = ctx.env.document.getElementById('send-button');
+  let tamperCallbackFired = false;
+  ctx.env.onTamperBlocked = () => {
+    tamperCallbackFired = true;
+  };
+
+  const submitted = await ctx.adapter.submit('Legitimate staged prompt.', { autoSend: false });
+  assert.equal(textarea.value, 'Legitimate staged prompt.');
+
+  // Tamper: simulate user modifying composer text in the tab
+  textarea.value = 'Illegitimate tampered text!';
+
+  // Attempt click on send button
+  const clickEvent = new ctx.env.document.defaultView.MouseEvent('click', {
+    bubbles: true,
+    cancelable: true,
+  });
+  sendButton.dispatchEvent(clickEvent);
+
+  assert.equal(clickEvent.defaultPrevented, true, 'tamper guard must cancel the click event');
+  assert.equal(tamperCallbackFired, true, 'tamper callback must be invoked');
+  assert.equal(ctx.mock.state, 'idle', 'provider must not have transitioned to generating');
+
+  // Restore legitimate text
+  textarea.value = 'Legitimate staged prompt.';
+  tamperCallbackFired = false;
+
+  const validClick = new ctx.env.document.defaultView.MouseEvent('click', {
+    bubbles: true,
+    cancelable: true,
+  });
+  sendButton.dispatchEvent(validClick);
+
+  assert.equal(validClick.defaultPrevented, false, 'legitimate click must not be cancelled');
 });
 
 test('submitting a second time while generating is still bound to the right reply', async () => {

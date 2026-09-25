@@ -556,6 +556,16 @@ function eventDetail(event: StoredEvent): string {
     case 'SUBMISSION_ACKNOWLEDGED':
     case 'TAMPER_DETECTED':
       return `op=${event.opId.slice(0, 8)}`;
+    case 'BRIDGE_CONNECTED':
+      return `transport=${event.transport}`;
+    case 'BRIDGE_DISCONNECTED':
+      return event.reason;
+    case 'GROUNDING_CONTEXT_REQUESTED':
+      return `debate=${event.debateId} round ${event.round}`;
+    case 'EGRESS_DECIDED':
+      return `debate=${event.debateId} decision=${event.decision}`;
+    case 'GROUNDING_CONTEXT_INJECTED':
+      return `debate=${event.debateId} ~${event.approxLines} lines${event.truncated ? ' (truncated)' : ''}`;
   }
 }
 

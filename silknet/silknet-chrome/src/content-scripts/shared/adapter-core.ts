@@ -54,6 +54,7 @@ export interface AdapterEnv {
   documentId: string;
   now(): number;
   randomId(): string;
+  onTamperBlocked?: (expectedText: string, actualText: string) => void;
 }
 
 export interface SilknetAdapter extends ProviderAdapter {
@@ -153,9 +154,21 @@ export function createAdapter(env: AdapterEnv, config: ProviderSelectorConfig): 
   const records = new Map<string, SubmissionRecord>();
   /** Records wiped by recover(); their outcome is unknown, never auto-resent. */
   const retired = new Set<string>();
+  let activeTamperCleanup: (() => void) | null = null;
 
   const doc = env.document;
   const body = doc.body;
+
+  const cleanupTamperGuard = (): void => {
+    if (activeTamperCleanup) {
+      activeTamperCleanup();
+      activeTamperCleanup = null;
+    }
+    const docWithGuard = doc as unknown as { __silknetTamperCleanup?: (() => void) | null };
+    if (docWithGuard.__silknetTamperCleanup === cleanupTamperGuard) {
+      docWithGuard.__silknetTamperCleanup = null;
+    }
+  };
 
   const assistantTurns = (): Element[] =>
     queryAll(selectorConfig.selectors.assistantTurn, body);
@@ -206,14 +219,17 @@ export function createAdapter(env: AdapterEnv, config: ProviderSelectorConfig): 
         reason: `response container not found (tried ${describeSpecs(selectorConfig.selectors.responseContainer)})`,
       };
     }
-    if (assistantTurns().length === 0 && userTurns().length === 0) {
+    const clean = assistantTurns().length === 0 && userTurns().length === 0;
+    if (clean) {
       // Recognised structure with an empty conversation is a valid, clean page
       // (in fact the required precondition for a debate round).
       const warning = !send && !stop ? ' (send/stop buttons not yet visible — will recheck at submit)' : '';
-      return { recognized: true, reason: `empty conversation, composer recognised${warning}` };
+      return { recognized: true, isClean: true, reason: `empty conversation, composer recognised${warning}` };
     }
-    return { recognized: true };
+    return { recognized: true, isClean: false, reason: 'conversation has prior history' };
   };
+
+  const isClean = (): boolean => assistantTurns().length === 0 && userTurns().length === 0;
 
   const composerReadyNow = (): boolean => {
     const composer = queryFirst<HTMLElement>(selectorConfig.selectors.composer, body);
@@ -262,10 +278,70 @@ export function createAdapter(env: AdapterEnv, config: ProviderSelectorConfig): 
     }
 
     if (!record.autoSent) {
-      // SEMI (default): a human performs the send. A script-dispatched click
-      // would carry event.isTrusted === false, whereas a real click has
-      // isTrusted === true, so leaving the click to the human is the mode that
-      // most closely resembles ordinary use from the site's own perspective.
+      // Clean up any lingering listener from an earlier turn or prior adapter on this document
+      const docWithGuard = doc as unknown as { __silknetTamperCleanup?: (() => void) | null };
+      if (typeof docWithGuard.__silknetTamperCleanup === 'function') {
+        docWithGuard.__silknetTamperCleanup();
+      }
+      cleanupTamperGuard();
+      docWithGuard.__silknetTamperCleanup = cleanupTamperGuard;
+
+      const lastInjectedText = text;
+      const sendResolved = queryFirst<HTMLElement>(selectorConfig.selectors.sendButton, body);
+      const targetEl = sendResolved?.el;
+
+      const checkAndBlockTamper = (event: Event): boolean => {
+        const composerEl = queryFirst<HTMLElement>(selectorConfig.selectors.composer, body);
+        if (!composerEl) return true;
+        const currentText = readComposerText(composerEl.el);
+        if (!textsMatch(currentText, lastInjectedText)) {
+          // Block click in capture phase before page listeners see it!
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          if (typeof env.onTamperBlocked === 'function') {
+            env.onTamperBlocked(lastInjectedText, currentText);
+          }
+          return false;
+        }
+        return true;
+      };
+
+      const onCaptureClick = (event: Event): void => {
+        const target = event.target as Node | null;
+        if (target) {
+          const currentSend = queryFirst(selectorConfig.selectors.sendButton, body);
+          if (currentSend && (currentSend.el === target || currentSend.el.contains(target))) {
+            const ok = checkAndBlockTamper(event);
+            if (ok) cleanupTamperGuard();
+            return;
+          }
+        }
+        if (targetEl && (event.currentTarget === targetEl || event.target === targetEl)) {
+          const ok = checkAndBlockTamper(event);
+          if (ok) cleanupTamperGuard();
+        }
+      };
+
+      const onCaptureKeydown = (event: Event): void => {
+        const keyEvent = event as KeyboardEvent;
+        if (keyEvent.key === 'Enter' && !keyEvent.shiftKey) {
+          const ok = checkAndBlockTamper(event);
+          if (ok) cleanupTamperGuard();
+        }
+      };
+
+      // Attach capture-phase listener to the send button directly and document for delegated clicks
+      targetEl?.addEventListener('click', onCaptureClick, true);
+      doc.addEventListener('click', onCaptureClick, true);
+      composer.el.addEventListener('keydown', onCaptureKeydown, true);
+
+      activeTamperCleanup = () => {
+        targetEl?.removeEventListener('click', onCaptureClick, true);
+        doc.removeEventListener('click', onCaptureClick, true);
+        composer.el.removeEventListener('keydown', onCaptureKeydown, true);
+      };
+
       return { submissionId, autoSent: false };
     }
 
@@ -391,6 +467,7 @@ export function createAdapter(env: AdapterEnv, config: ProviderSelectorConfig): 
         reason: [...last.reason, `timeout-${timeoutMs}ms: completion signals never all satisfied`],
       };
     }
+    cleanupTamperGuard();
     return { complete: true, reason: last.reason };
   };
 
@@ -423,6 +500,7 @@ export function createAdapter(env: AdapterEnv, config: ProviderSelectorConfig): 
   };
 
   const recover = async (): Promise<void> => {
+    cleanupTamperGuard();
     // A fresh content script instance means the page reloaded. Any in-flight
     // submission belongs to a document that no longer exists, so its outcome is
     // UNKNOWN — retire it and let a human decide. Never resend automatically:
@@ -435,6 +513,7 @@ export function createAdapter(env: AdapterEnv, config: ProviderSelectorConfig): 
   return {
     probe,
     getState,
+    isClean,
     submit,
     waitForCompletion,
     readReply,

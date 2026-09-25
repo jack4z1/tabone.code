@@ -33,7 +33,14 @@ export type DebateEvent =
   | { type: 'ROUND_COMPLETED'; runId: string; round: number; timestamp: number }
   | { type: 'USER_INTERJECTED'; runId: string; text: string; timestamp: number }
   | { type: 'RUN_STOPPED'; runId: string; reason: string; timestamp: number }
-  | { type: 'TAMPER_DETECTED'; runId: string; provider: string; opId: string; timestamp: number };
+  | { type: 'TAMPER_DETECTED'; runId: string; provider: string; opId: string; timestamp: number }
+  // Bridge + grounding events (Phase B0.x). The bridge is the WebSocket link to
+  // the VS Code extension; grounding context is the local report it provides.
+  | { type: 'BRIDGE_CONNECTED'; transport: 'websocket-127.0.0.1'; timestamp: number }
+  | { type: 'BRIDGE_DISCONNECTED'; reason: string; timestamp: number }
+  | { type: 'GROUNDING_CONTEXT_REQUESTED'; runId: string; debateId: string; round: number; timestamp: number }
+  | { type: 'EGRESS_DECIDED'; runId: string; debateId: string; decision: string; timestamp: number }
+  | { type: 'GROUNDING_CONTEXT_INJECTED'; runId: string; debateId: string; approxLines: number; truncated: boolean; timestamp: number };
 
 export type DebateEventType = DebateEvent['type'];
 
@@ -50,6 +57,11 @@ const EVENT_TYPES: readonly DebateEventType[] = [
   'USER_INTERJECTED',
   'RUN_STOPPED',
   'TAMPER_DETECTED',
+  'BRIDGE_CONNECTED',
+  'BRIDGE_DISCONNECTED',
+  'GROUNDING_CONTEXT_REQUESTED',
+  'EGRESS_DECIDED',
+  'GROUNDING_CONTEXT_INJECTED',
 ];
 
 export type EventValidation =
@@ -102,7 +114,7 @@ export function validateEvent(v: unknown): EventValidation {
       const runId = nonEmptyStr(v['runId']);
       const round = num(v['round']);
       if (!runId) return { ok: false, reason: `${type}: runId required` };
-      if (round === null) return { ok: false, reason: `${type}: round must be a finite number` };
+      if (round === null || round < 1) return { ok: false, reason: `${type}: round must be a positive integer` };
       return { ok: true, event: { type: eventType, runId, round, timestamp } };
     }
     case 'SUBMISSION_REQUESTED': {
@@ -112,7 +124,7 @@ export function validateEvent(v: unknown): EventValidation {
       const opId = nonEmptyStr(v['opId']);
       const text = str(v['text']);
       if (!runId) return { ok: false, reason: 'SUBMISSION_REQUESTED: runId required' };
-      if (round === null) return { ok: false, reason: 'SUBMISSION_REQUESTED: round required' };
+      if (round === null || round < 1) return { ok: false, reason: 'SUBMISSION_REQUESTED: round required' };
       if (!provider) return { ok: false, reason: 'SUBMISSION_REQUESTED: provider required' };
       if (!opId) return { ok: false, reason: 'SUBMISSION_REQUESTED: opId required' };
       if (text === null) return { ok: false, reason: 'SUBMISSION_REQUESTED: text required' };
@@ -167,6 +179,46 @@ export function validateEvent(v: unknown): EventValidation {
       if (!provider) return { ok: false, reason: 'TAMPER_DETECTED: provider required' };
       if (!opId) return { ok: false, reason: 'TAMPER_DETECTED: opId required' };
       return { ok: true, event: { type: eventType, runId, provider, opId, timestamp } };
+    }
+    case 'BRIDGE_CONNECTED':
+      return { ok: true, event: { type: eventType, transport: 'websocket-127.0.0.1', timestamp } };
+    case 'BRIDGE_DISCONNECTED': {
+      const reason = str(v['reason']);
+      if (reason === null) return { ok: false, reason: 'BRIDGE_DISCONNECTED: reason required' };
+      return { ok: true, event: { type: eventType, reason, timestamp } };
+    }
+    case 'GROUNDING_CONTEXT_REQUESTED': {
+      const runId = nonEmptyStr(v['runId']);
+      const debateId = nonEmptyStr(v['debateId']);
+      const round = num(v['round']);
+      if (!runId) return { ok: false, reason: 'GROUNDING_CONTEXT_REQUESTED: runId required' };
+      if (!debateId) return { ok: false, reason: 'GROUNDING_CONTEXT_REQUESTED: debateId required' };
+      if (round === null || round < 0) return { ok: false, reason: 'GROUNDING_CONTEXT_REQUESTED: round required' };
+      return { ok: true, event: { type: eventType, runId, debateId, round, timestamp } };
+    }
+    case 'EGRESS_DECIDED': {
+      const runId = nonEmptyStr(v['runId']);
+      const debateId = nonEmptyStr(v['debateId']);
+      const decision = nonEmptyStr(v['decision']);
+      if (!runId) return { ok: false, reason: 'EGRESS_DECIDED: runId required' };
+      if (!debateId) return { ok: false, reason: 'EGRESS_DECIDED: debateId required' };
+      if (!decision) return { ok: false, reason: 'EGRESS_DECIDED: decision required' };
+      return { ok: true, event: { type: eventType, runId, debateId, decision, timestamp } };
+    }
+    case 'GROUNDING_CONTEXT_INJECTED': {
+      const runId = nonEmptyStr(v['runId']);
+      const debateId = nonEmptyStr(v['debateId']);
+      const approxLines = num(v['approxLines']);
+      if (!runId) return { ok: false, reason: 'GROUNDING_CONTEXT_INJECTED: runId required' };
+      if (!debateId) return { ok: false, reason: 'GROUNDING_CONTEXT_INJECTED: debateId required' };
+      if (approxLines === null || approxLines < 0) {
+        return { ok: false, reason: 'GROUNDING_CONTEXT_INJECTED: approxLines required' };
+      }
+      const truncated = v['truncated'];
+      if (typeof truncated !== 'boolean') {
+        return { ok: false, reason: 'GROUNDING_CONTEXT_INJECTED: truncated must be boolean' };
+      }
+      return { ok: true, event: { type: eventType, runId, debateId, approxLines, truncated, timestamp } };
     }
     default:
       return { ok: false, reason: `unhandled event type ${type}` };
@@ -253,7 +305,11 @@ export async function readAll(): Promise<StoredEvent[]> {
 /** Every event belonging to one run (RUN_CREATED carries `id`, not `runId`). */
 export async function readRun(runId: string): Promise<StoredEvent[]> {
   const all = await readAll();
-  return all.filter((e) => (e.type === 'RUN_CREATED' ? e.id === runId : e.runId === runId));
+  return all.filter((e) => {
+    if (e.type === 'RUN_CREATED') return e.id === runId;
+    // Bridge events without a runId simply never match a run filter.
+    return 'runId' in e ? e.runId === runId : false;
+  });
 }
 
 /**
@@ -269,7 +325,105 @@ export async function clearLog(): Promise<void> {
   await tx('readwrite', (store) => store.clear());
 }
 
-// Phase v0.5 scope, deliberately not built yet (per the phased plan):
-//   - retention policy: keep the last 100 debates or 30 days, whichever is
-//     smaller, with a size alert near a defined ceiling;
-//   - export-and-purge flow (Markdown/JSON export lands in Phase v1.0).
+export const RETENTION_MAX_RUNS = 100;
+export const RETENTION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+export interface RetentionResult {
+  deletedRuns: string[];
+  deletedEventsCount: number;
+  remainingRunsCount: number;
+}
+
+/**
+ * Enforces the spec's retention policy:
+ * Keeps the most recent 100 debates or 30 days, whichever is smaller.
+ * Deletes older records to prevent unbounded IndexedDB growth.
+ */
+export async function applyRetentionPolicy(
+  now = Date.now(),
+  maxRuns = RETENTION_MAX_RUNS,
+  maxAgeMs = RETENTION_MAX_AGE_MS,
+): Promise<RetentionResult> {
+  const all = await readAll();
+  if (all.length === 0) {
+    return { deletedRuns: [], deletedEventsCount: 0, remainingRunsCount: 0 };
+  }
+
+  // Group events by run
+  const runsMap = new Map<string, { latestTimestamp: number; seqs: number[] }>();
+  for (const e of all) {
+    const runId = e.type === 'RUN_CREATED' ? e.id : ('runId' in e ? e.runId : `${e.type}@${e.timestamp}:${e.seq}`);
+    let entry = runsMap.get(runId);
+    if (!entry) {
+      entry = { latestTimestamp: e.timestamp, seqs: [] };
+      runsMap.set(runId, entry);
+    }
+    if (e.timestamp > entry.latestTimestamp) {
+      entry.latestTimestamp = e.timestamp;
+    }
+    entry.seqs.push(e.seq);
+  }
+
+  const cutoffTime = now - maxAgeMs;
+  const expiredRunIds = new Set<string>();
+
+  // 1. Expire runs older than 30 days
+  for (const [runId, data] of runsMap.entries()) {
+    if (data.latestTimestamp < cutoffTime) {
+      expiredRunIds.add(runId);
+    }
+  }
+
+  // 2. Cap at maxRuns (most recent first)
+  const sortedRuns = [...runsMap.entries()]
+    .filter(([runId]) => !expiredRunIds.has(runId))
+    .sort((a, b) => b[1].latestTimestamp - a[1].latestTimestamp);
+
+  const excessRunIds = new Set<string>();
+  if (sortedRuns.length > maxRuns) {
+    for (let i = maxRuns; i < sortedRuns.length; i++) {
+      const run = sortedRuns[i];
+      if (run) excessRunIds.add(run[0]);
+    }
+  }
+
+  const runsToDelete = new Set([...expiredRunIds, ...excessRunIds]);
+  if (runsToDelete.size === 0) {
+    return { deletedRuns: [], deletedEventsCount: 0, remainingRunsCount: runsMap.size };
+  }
+
+  const seqsToDelete: number[] = [];
+  for (const runId of runsToDelete) {
+    const entry = runsMap.get(runId);
+    if (entry) {
+      seqsToDelete.push(...entry.seqs);
+    }
+  }
+
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE, 'readwrite');
+    const store = transaction.objectStore(STORE);
+    for (const seq of seqsToDelete) {
+      store.delete(seq);
+    }
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error ?? new Error('deletion failed'));
+    transaction.onabort = () => reject(transaction.error ?? new Error('transaction aborted'));
+  });
+
+  return {
+    deletedRuns: [...runsToDelete],
+    deletedEventsCount: seqsToDelete.length,
+    remainingRunsCount: runsMap.size - runsToDelete.size,
+  };
+}
+
+/**
+ * Exports the entire event log before purging it from IndexedDB.
+ */
+export async function exportAndPurgeLog(): Promise<{ count: number; events: StoredEvent[] }> {
+  const events = await readAll();
+  await clearLog();
+  return { count: events.length, events };
+}

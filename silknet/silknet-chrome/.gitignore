@@ -3,4 +3,4 @@ dist/
 *.log
 
 # esbuild scratch bundles emitted by the conformance tests
-.test-build/
+.test-build*/
