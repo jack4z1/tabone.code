@@ -1,0 +1,77 @@
+{
+  "name": "silknet",
+  "displayName": "Silknet",
+  "description": "Connect Browser AI to Local AI",
+  "version": "1.0.0",
+  "publisher": "silknet",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["AI", "Machine Learning", "Programming Languages"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tab-bridge-container",
+          "title": "Silknet",
+          "icon": "icons/bridge.svg"
+        }
+      ]
+    },
+    "views": {
+      "tab-bridge-container": [
+        {
+          "type": "webview",
+          "id": "tabBridge.masterView",
+          "name": "Silknet Master Panel"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "tabBridge.askAI",
+        "title": "Silknet: Ask Browser AI",
+        "category": "Silknet"
+      },
+      {
+        "command": "tabBridge.sendSelection",
+        "title": "Silknet: Send Selected Code to Browser AI",
+        "category": "Silknet"
+      },
+      {
+        "command": "tabBridge.broadcastAI",
+        "title": "Silknet: Broadcast to All Browser AIs (Multi-Tab)",
+        "category": "Silknet"
+      },
+      {
+        "command": "tabBridge.checkStatus",
+        "title": "Silknet: Check Connected AI Tabs Status",
+        "category": "Silknet"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "tabBridge.askAI",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a"
+      },
+      {
+        "command": "tabBridge.sendSelection",
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s",
+        "when": "editorHasSelection"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.6.0"
+  }
+}

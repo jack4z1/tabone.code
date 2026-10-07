@@ -1,0 +1,17 @@
+# Independent workspaces
+Alttrnet/
+Alttrnet_Benchmark/
+Blinker/
+DataPharm/
+Project Contents/
+silknet 0.5.0/
+Alttrnet - Copy.zip
+
+# Environment & Editor
+.claude/
+.vscode/
+.kilo/
+*.log
+
+# Dependencies
+node_modules/
